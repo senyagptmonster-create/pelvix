@@ -1,0 +1,6 @@
+{
+  "routines": [
+    { "name": "Basic Plank", "duration": 60 },
+    { "name": "Advanced Plank", "duration": 120 }
+  ]
+}
