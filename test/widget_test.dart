@@ -1,9 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pelvix/pelvix_app.dart';
+import 'package:pelvix/main.dart';
 
 void main() {
-  testWidgets('PelvixCoreApp smoke test', (WidgetTester tester) async {
-    await tester.pumpWidget(const PelvixCoreApp());
-    expect(find.byType(PelvixCoreApp), findsOneWidget);
+  testWidgets('PelvixApp smoke test', (WidgetTester tester) async {
+    await tester.pumpWidget(const PelvixApp());
+    expect(find.text('PELVIX ISOMETRIC CORE'), findsOneWidget);
+    expect(find.text('COMMENCE HOLD'), findsOneWidget);
   });
 }

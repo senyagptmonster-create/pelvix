@@ -1,10 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
-import '../components/timer_dial_widget.dart';
-import '../services/workout_storage_service.dart';
 import '../theme/pelvix_theme.dart';
+import '../painters/plank_posture_painter.dart';
 
 class PlankTimerScreen extends StatefulWidget {
   const PlankTimerScreen({super.key});
@@ -14,19 +11,11 @@ class PlankTimerScreen extends StatefulWidget {
 }
 
 class _PlankTimerScreenState extends State<PlankTimerScreen> {
-  Timer? _timer;
-  int _remainingSeconds = 60;
   int _targetSeconds = 60;
+  int _secondsLeft = 60;
   bool _isRunning = false;
-  bool _isCompleted = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final service = Provider.of<WorkoutStorageService>(context, listen: false);
-    _targetSeconds = service.targetDurationSeconds;
-    _remainingSeconds = _targetSeconds;
-  }
+  Timer? _timer;
+  String _selectedVariation = 'Forearm Plank';
 
   @override
   void dispose() {
@@ -34,386 +23,267 @@ class _PlankTimerScreenState extends State<PlankTimerScreen> {
     super.dispose();
   }
 
-  void _startTimer() {
-    if (_isRunning) return;
+  void _toggleTimer() {
     setState(() {
-      _isRunning = true;
-      _isCompleted = false;
-    });
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (_remainingSeconds > 1) {
-        setState(() {
-          _remainingSeconds--;
+      _isRunning = !_isRunning;
+      if (_isRunning) {
+        _timer = Timer.periodic(const Duration(seconds: 1), (t) {
+          if (_secondsLeft > 0) {
+            setState(() => _secondsLeft--);
+          } else {
+            t.cancel();
+            setState(() => _isRunning = false);
+          }
         });
-        // 3-2-1 countdown cue
-        if (_remainingSeconds <= 3) {
-          HapticFeedback.mediumImpact();
-        }
       } else {
-        t.cancel();
-        _onHoldCompleted();
+        _timer?.cancel();
       }
-    });
-  }
-
-  void _pauseTimer() {
-    _timer?.cancel();
-    setState(() {
-      _isRunning = false;
     });
   }
 
   void _resetTimer() {
     _timer?.cancel();
-    final service = Provider.of<WorkoutStorageService>(context, listen: false);
     setState(() {
       _isRunning = false;
-      _isCompleted = false;
-      _targetSeconds = service.targetDurationSeconds;
-      _remainingSeconds = _targetSeconds;
+      _secondsLeft = _targetSeconds;
     });
   }
 
-  void _adjustTime(int deltaSeconds) {
-    if (_isRunning) return;
-    final newTime = (_targetSeconds + deltaSeconds).clamp(15, 600);
+  void _setTarget(int seconds) {
+    _timer?.cancel();
     setState(() {
-      _targetSeconds = newTime;
-      _remainingSeconds = newTime;
+      _targetSeconds = seconds;
+      _secondsLeft = seconds;
+      _isRunning = false;
     });
-    context.read<WorkoutStorageService>().setTargetDuration(newTime);
   }
 
-  void _onHoldCompleted() {
-    HapticFeedback.heavyImpact();
-    setState(() {
-      _isRunning = false;
-      _isCompleted = true;
-      _remainingSeconds = 0;
-    });
+  void _showVariationsSheet() {
+    final variations = [
+      {'name': 'Forearm Plank', 'desc': 'Maximum core engagement, neutral spine'},
+      {'name': 'High Plank', 'desc': 'Straight arm push, shoulder girdle stability'},
+      {'name': 'Side Plank (L/R)', 'desc': 'Lateral obliques and hip adductors focus'},
+      {'name': 'Bird-Dog Isometric', 'desc': 'Posterior chain and deep transverse hold'},
+    ];
 
-    final service = context.read<WorkoutStorageService>();
-    final exercise = service.currentExercise;
-    service.recordSession(
-      exerciseName: exercise.name,
-      durationSeconds: _targetSeconds,
-      targetSeconds: _targetSeconds,
-    );
-
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: PelvixTheme.cardNavy,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: PelvixTheme.neonGreen),
-        ),
-        title: const Row(
-          children: [
-            Icon(Icons.emoji_events_rounded, color: PelvixTheme.neonGreen, size: 28),
-            SizedBox(width: 10),
-            Text(
-              'Hold Conquered!',
-              style: TextStyle(color: PelvixTheme.textLight, fontWeight: FontWeight.w800),
-            ),
-          ],
-        ),
-        content: Column(
+      backgroundColor: PelvixTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Flawless isometric tension held for $_targetSeconds seconds in ${exercise.name}.',
-              style: const TextStyle(color: PelvixTheme.textMuted, height: 1.4),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: PelvixTheme.darkNavyBg,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Personal Best:', style: TextStyle(fontSize: 13, color: PelvixTheme.textMuted)),
-                  Text(
-                    '${service.personalBestSeconds}s',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: PelvixTheme.neonGreen,
+            const Text('Core Plank Variations', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 14),
+            ...variations.map((v) => Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: PelvixTheme.bg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _selectedVariation == v['name']
+                          ? PelvixTheme.accent
+                          : PelvixTheme.edge,
                     ),
                   ),
-                ],
-              ),
-            ),
+                  child: ListTile(
+                    title: Text(v['name']!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text(v['desc']!, style: const TextStyle(color: PelvixTheme.muted, fontSize: 12)),
+                    onTap: () {
+                      setState(() => _selectedVariation = v['name']!);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                )),
           ],
         ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _resetTimer();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: PelvixTheme.neonGreen,
-              foregroundColor: PelvixTheme.darkNavyBg,
-            ),
-            child: const Text('Continue Next Round'),
-          ),
-        ],
+      ),
+    );
+  }
+
+  void _showFormGuideSheet() {
+    final cues = [
+      'Lock glutes and quads to create a rigid lever.',
+      'Pull belly button towards spine to brace transverse abdominis.',
+      'Press through elbows to avoid scapular sagging.',
+      'Maintain neutral cervical spine; gaze 6 inches in front of hands.',
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: PelvixTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Biomechanic Alignment Cues', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 14),
+            ...cues.map((cue) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.check_circle, color: PelvixTheme.accent, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(cue, style: const TextStyle(color: PelvixTheme.ink, height: 1.4, fontSize: 13)),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final service = context.watch<WorkoutStorageService>();
-    final currentEx = service.currentExercise;
+    final progress = (_targetSeconds - _secondsLeft) / _targetSeconds;
+    final mins = _secondsLeft ~/ 60;
+    final secs = _secondsLeft % 60;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Isometric Hold Timer'),
-        actions: [
-          IconButton(
-            icon: Icon(
-              service.soundCuesEnabled
-                  ? Icons.volume_up_rounded
-                  : Icons.volume_off_rounded,
-              color: service.soundCuesEnabled
-                  ? PelvixTheme.neonGreen
-                  : PelvixTheme.textMuted,
-            ),
-            tooltip: 'Audio Cues',
-            onPressed: () {
-              service.toggleSoundCues(!service.soundCuesEnabled);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    service.soundCuesEnabled
-                        ? 'Sound & haptic cues active'
-                        : 'Sound cues muted',
-                  ),
-                  duration: const Duration(seconds: 1),
-                ),
-              );
-            },
-          ),
-          const SizedBox(width: 8),
-        ],
+        title: const Text('PELVIX ISOMETRIC CORE', style: TextStyle(letterSpacing: 1.2, fontWeight: FontWeight.bold, fontSize: 16)),
+        centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        child: Column(
-          children: [
-            // Exercise selector pill
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: PelvixTheme.cardNavy,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Column(
+            children: [
+              const SizedBox(height: 10),
+              // Selected Variation Pill
+              InkWell(
+                onTap: _showVariationsSheet,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: PelvixTheme.borderNavy),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: service.selectedExerciseId,
-                  dropdownColor: PelvixTheme.cardNavyElevated,
-                  icon: const Icon(Icons.arrow_drop_down_rounded,
-                      color: PelvixTheme.neonGreen),
-                  items: service.exercises.map((ex) {
-                    return DropdownMenuItem(
-                      value: ex.id,
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 8,
-                            height: 8,
-                            decoration: const BoxDecoration(
-                              color: PelvixTheme.neonGreen,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Text(
-                            ex.name,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: PelvixTheme.textLight,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (id) {
-                    if (id != null && !_isRunning) {
-                      service.setSelectedExercise(id);
-                      setState(() {
-                        _targetSeconds = service.targetDurationSeconds;
-                        _remainingSeconds = _targetSeconds;
-                      });
-                    }
-                  },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: PelvixTheme.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: PelvixTheme.accent.withValues(alpha: 0.5)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_selectedVariation, style: const TextStyle(color: PelvixTheme.accent, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.arrow_drop_down, color: PelvixTheme.accent),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            // The Circular Timer Dial Widget
-            TimerDialWidget(
-              remainingSeconds: _remainingSeconds,
-              targetSeconds: _targetSeconds,
-              isRunning: _isRunning,
-              isCompleted: _isCompleted,
-            ),
-            const SizedBox(height: 20),
-            // Quick Duration Adjustments
-            if (!_isRunning)
+              const SizedBox(height: 24),
+              // Posture & Ring Visualizer
+              Center(
+                child: SizedBox(
+                  width: 250,
+                  height: 250,
+                  child: CustomPaint(
+                    painter: PlankPosturePainter(progress: progress, isActive: _isRunning),
+                    child: Center(
+                      child: Text(
+                        '$mins:${secs.toString().padLeft(2, '0')}',
+                        style: const TextStyle(
+                          fontSize: 48,
+                          fontWeight: FontWeight.bold,
+                          color: PelvixTheme.ink,
+                          letterSpacing: -1,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Duration Presets
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  OutlinedButton(
-                    onPressed: () => _adjustTime(-15),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: PelvixTheme.textLight,
-                      side: const BorderSide(color: PelvixTheme.borderNavy),
-                    ),
-                    child: const Text('-15s'),
-                  ),
-                  const SizedBox(width: 12),
-                  ...[45, 60, 90].map((dur) {
-                    final isSel = _targetSeconds == dur;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: ActionChip(
-                        label: Text('${dur}s'),
-                        backgroundColor: isSel
-                            ? PelvixTheme.neonGreenDim
-                            : PelvixTheme.cardNavy,
-                        side: BorderSide(
-                          color: isSel
-                              ? PelvixTheme.neonGreen
-                              : PelvixTheme.borderNavy,
-                        ),
-                        labelStyle: TextStyle(
-                          color: isSel
-                              ? PelvixTheme.neonGreen
-                              : PelvixTheme.textMuted,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            _targetSeconds = dur;
-                            _remainingSeconds = dur;
-                          });
-                          service.setTargetDuration(dur);
-                        },
+                children: [30, 60, 90, 120].map((s) {
+                  final isSel = _targetSeconds == s;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: ChoiceChip(
+                      label: Text('${s}s'),
+                      selected: isSel,
+                      selectedColor: PelvixTheme.accent,
+                      labelStyle: TextStyle(
+                        color: isSel ? Colors.black : Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
-                    );
-                  }),
-                  OutlinedButton(
-                    onPressed: () => _adjustTime(15),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: PelvixTheme.textLight,
-                      side: const BorderSide(color: PelvixTheme.borderNavy),
+                      onSelected: (_) => _setTarget(s),
                     ),
-                    child: const Text('+15s'),
-                  ),
-                ],
+                  );
+                }).toList(),
               ),
-            const SizedBox(height: 20),
-            // Timer Control Buttons
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isRunning ? _pauseTimer : _startTimer,
-                    icon: Icon(
-                      _isRunning
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      size: 26,
-                    ),
-                    label: Text(
-                      _isRunning ? 'PAUSE HOLD' : 'IGNITE TIMER',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
+              const SizedBox(height: 24),
+              // Control Buttons
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _isRunning ? Colors.redAccent : PelvixTheme.accent,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        onPressed: _toggleTimer,
+                        icon: Icon(_isRunning ? Icons.pause : Icons.play_arrow),
+                        label: Text(
+                          _isRunning ? 'PAUSE HOLD' : 'COMMENCE HOLD',
+                          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1),
+                        ),
                       ),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isRunning
-                          ? PelvixTheme.alertOrange
-                          : PelvixTheme.neonGreen,
-                      foregroundColor: PelvixTheme.darkNavyBg,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
+                    const SizedBox(width: 12),
+                    IconButton.filledTonal(
+                      onPressed: _resetTimer,
+                      icon: const Icon(Icons.refresh),
+                      style: IconButton.styleFrom(
+                        padding: const EdgeInsets.all(16),
+                        backgroundColor: PelvixTheme.surface,
                       ),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                IconButton.filledTonal(
-                  onPressed: _resetTimer,
-                  icon: const Icon(Icons.refresh_rounded),
-                  style: IconButton.styleFrom(
-                    backgroundColor: PelvixTheme.cardNavyElevated,
-                    foregroundColor: PelvixTheme.textLight,
-                    padding: const EdgeInsets.all(16),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            // Form coaching reminder banner
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: PelvixTheme.cardNavy,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: PelvixTheme.borderNavy),
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(
-                    Icons.psychology_rounded,
-                    color: PelvixTheme.neonGreen,
-                    size: 24,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Primary Form Cue',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: PelvixTheme.neonGreen,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          currentEx.formCue,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: PelvixTheme.textMuted,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
+              const SizedBox(height: 24),
+              // Action Sheets Buttons
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    TextButton.icon(
+                      onPressed: _showVariationsSheet,
+                      icon: const Icon(Icons.fitness_center, color: PelvixTheme.accentLight, size: 18),
+                      label: const Text('Variations', style: TextStyle(color: PelvixTheme.ink)),
                     ),
-                  ),
-                ],
+                    TextButton.icon(
+                      onPressed: _showFormGuideSheet,
+                      icon: const Icon(Icons.accessibility_new, color: PelvixTheme.accentLight, size: 18),
+                      label: const Text('Form Guide', style: TextStyle(color: PelvixTheme.ink)),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
